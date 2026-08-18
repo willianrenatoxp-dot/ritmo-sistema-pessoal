@@ -221,7 +221,11 @@ const financeGroupTones: Record<FinanceGroupColor, string> = {
   amber: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
   emerald: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
 };
-const financeGroupColors: { value: FinanceGroupColor; label: string; swatch: string }[] = [
+const financeGroupColors: {
+  value: FinanceGroupColor;
+  label: string;
+  swatch: string;
+}[] = [
   { value: "violet", label: "Violeta", swatch: "bg-violet-500" },
   { value: "orange", label: "Laranja", swatch: "bg-orange-500" },
   { value: "blue", label: "Azul", swatch: "bg-blue-500" },
@@ -540,7 +544,10 @@ export default function Page() {
 
   if (!ready || !user) {
     return (
-      <main className="grid min-h-screen place-items-center" aria-label="Carregando Ritmo">
+      <main
+        className="grid min-h-screen place-items-center"
+        aria-label="Carregando Ritmo"
+      >
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
       </main>
     );
@@ -637,6 +644,7 @@ export default function Page() {
         <div className="mx-auto w-full max-w-[1500px] p-4 md:p-6">
           {section === "dashboard" && (
             <Dashboard
+              user={user}
               state={state}
               onToggle={toggleActivity}
               onNavigate={navigate}
@@ -725,9 +733,7 @@ export default function Page() {
                     completed,
                     practiceNotes,
                     activityOverrides,
-                    deletedPillars: [
-                      ...new Set([...s.deletedPillars, pillar]),
-                    ],
+                    deletedPillars: [...new Set([...s.deletedPillars, pillar])],
                     deletedActivityIds: isBasePillar
                       ? [
                           ...new Set([
@@ -1034,6 +1040,18 @@ export default function Page() {
   );
 }
 
+function getUserDisplayName(user: User) {
+  const fullName = String(user.user_metadata.full_name ?? "").trim();
+  if (fullName) return fullName;
+
+  const emailName = user.email?.split("@")[0].trim();
+  return emailName || "Usuário";
+}
+
+function getUserFirstName(user: User) {
+  return getUserDisplayName(user).split(/\s+/)[0];
+}
+
 function Profile({
   user,
   syncStatus,
@@ -1044,7 +1062,7 @@ function Profile({
   onSignOut: () => Promise<void>;
 }) {
   const { open } = useSidebar();
-  const name = String(user.user_metadata.full_name ?? user.email ?? "Usuário");
+  const name = getUserDisplayName(user);
   const initials = name
     .split(" ")
     .slice(0, 2)
@@ -1065,7 +1083,9 @@ function Profile({
       {open && (
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{name}</p>
-          <p className="truncate text-xs text-muted-foreground">{statusLabel}</p>
+          <p className="truncate text-xs text-muted-foreground">
+            {statusLabel}
+          </p>
         </div>
       )}
       {open && (
@@ -1248,10 +1268,12 @@ function PageActions({ children }: { children: React.ReactNode }) {
 }
 
 function Dashboard({
+  user,
   state,
   onToggle,
   onNavigate,
 }: {
+  user: User;
   state: AppState;
   onToggle: (a: Activity, date?: string) => void;
   onNavigate: (s: Section) => void;
@@ -1280,7 +1302,7 @@ function Dashboard({
     <>
       <PageTitle
         eyebrow="Visão geral"
-        title="Bom dia, Willian"
+        title={`Olá, ${getUserFirstName(user)}`}
         description={`${days[day]}, ${new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long" }).format(new Date())}. Seu plano está em movimento.`}
       />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -1377,28 +1399,30 @@ function Dashboard({
               {getActivePillars(state)
                 .filter((pillar) => pillar !== "Finanças")
                 .map((pillar) => {
-                const all = activities.filter((a) => a.pillar === pillar);
-                const value =
-                  Math.round(
-                    (all.filter(
-                      (a) =>
-                        state.completed[completionKey(a.id, weekDates[a.day])],
-                    ).length /
-                      all.length) *
-                      100,
-                  ) || 0;
-                return (
-                  <div key={pillar}>
-                    <div className="mb-1.5 flex justify-between text-sm">
-                      <span>{pillar}</span>
-                      <span className="font-mono text-muted-foreground">
-                        {value}%
-                      </span>
+                  const all = activities.filter((a) => a.pillar === pillar);
+                  const value =
+                    Math.round(
+                      (all.filter(
+                        (a) =>
+                          state.completed[
+                            completionKey(a.id, weekDates[a.day])
+                          ],
+                      ).length /
+                        all.length) *
+                        100,
+                    ) || 0;
+                  return (
+                    <div key={pillar}>
+                      <div className="mb-1.5 flex justify-between text-sm">
+                        <span>{pillar}</span>
+                        <span className="font-mono text-muted-foreground">
+                          {value}%
+                        </span>
+                      </div>
+                      <Progress value={value} />
                     </div>
-                    <Progress value={value} />
-                  </div>
-                );
-              })}
+                  );
+                })}
             </CardContent>
           </Card>
         </div>
@@ -1910,24 +1934,38 @@ function FinanceEntries({
           </PageActions>
         }
       />
-      <div className="grid auto-rows-fr gap-4 md:grid-cols-2 2xl:grid-cols-4">
-        {groups.map((group) => (
-          <FinanceLedgerCard
-            key={group.id}
-            title={group.name}
-            tone={financeGroupTones[group.color]}
-            items={group.items}
-            onDeleteGroup={() => onDeleteGroup(group)}
-            linkedEntries={group.linkedEntries}
-            onAdd={() =>
-              onAddEntry({ kind: group.kind, account: group.name })
-            }
-            onEdit={onEdit}
-            onDelete={onDelete}
-            income={group.kind === "income"}
-          />
-        ))}
-      </div>
+      {groups.length === 0 ? (
+        <Card>
+          <CardContent className="pt-6">
+            <EmptyState
+              icon={CircleDollarSign}
+              title="Nenhum bloco de lançamentos criado"
+              description="Crie seu primeiro bloco para organizar receitas ou despesas e começar a registrar seus lançamentos."
+              action="Criar primeiro bloco"
+              onAction={onAddGroup}
+            />
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid auto-rows-fr gap-4 md:grid-cols-2 2xl:grid-cols-4">
+          {groups.map((group) => (
+            <FinanceLedgerCard
+              key={group.id}
+              title={group.name}
+              tone={financeGroupTones[group.color]}
+              items={group.items}
+              onDeleteGroup={() => onDeleteGroup(group)}
+              linkedEntries={group.linkedEntries}
+              onAdd={() =>
+                onAddEntry({ kind: group.kind, account: group.name })
+              }
+              onEdit={onEdit}
+              onDelete={onDelete}
+              income={group.kind === "income"}
+            />
+          ))}
+        </div>
+      )}
     </>
   );
 }
@@ -2788,8 +2826,7 @@ function PillarDialog({
     if (
       pillars.some(
         (item) =>
-          item.toLocaleLowerCase("pt-BR") ===
-          pillar.toLocaleLowerCase("pt-BR"),
+          item.toLocaleLowerCase("pt-BR") === pillar.toLocaleLowerCase("pt-BR"),
       )
     ) {
       setError("Já existe um pilar com esse nome.");
@@ -3251,8 +3288,8 @@ function ExpenseDialog({
   const initialAccount =
     (expense
       ? getExpenseGroupName(expense)
-      : preset?.account ??
-        financeGroups.find((group) => group.kind === initialKind)?.name) ?? "";
+      : (preset?.account ??
+        financeGroups.find((group) => group.kind === initialKind)?.name)) ?? "";
   const [kind, setKind] = useState<Expense["kind"]>(initialKind);
   const [category, setCategory] = useState(
     expense?.category ?? (initialKind === "income" ? "Salário" : "Alimentação"),
@@ -3276,9 +3313,7 @@ function ExpenseDialog({
   const changeKind = (value: string) => {
     const next = value as Expense["kind"];
     setKind(next);
-    setAccount(
-      financeGroups.find((group) => group.kind === next)?.name ?? "",
-    );
+    setAccount(financeGroups.find((group) => group.kind === next)?.name ?? "");
     if (next === "income") {
       setCategory("Salário");
       setMethod("PIX");
@@ -3451,7 +3486,11 @@ function ExpenseDialog({
                 </Select>
               </Field>
             </div>
-            <Field label={kind === "income" ? "Grupo da entrada" : "Grupo da despesa"}>
+            <Field
+              label={
+                kind === "income" ? "Grupo da entrada" : "Grupo da despesa"
+              }
+            >
               <Select
                 value={account}
                 onValueChange={(value) => setAccount(value as ExpenseAccount)}
@@ -3471,7 +3510,8 @@ function ExpenseDialog({
             </Field>
             {availableFinanceGroups.length === 0 && (
               <p className="-mt-2 text-sm text-destructive">
-                Crie primeiro um bloco de {kind === "income" ? "entrada" : "saída"} em Lançamentos.
+                Crie primeiro um bloco de{" "}
+                {kind === "income" ? "entrada" : "saída"} em Lançamentos.
               </p>
             )}
             {kind === "expense" && (
@@ -3536,7 +3576,10 @@ function ExpenseDialog({
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={availableFinanceGroups.length === 0}>
+            <Button
+              type="submit"
+              disabled={availableFinanceGroups.length === 0}
+            >
               {expense
                 ? "Salvar alterações"
                 : installment
