@@ -163,6 +163,12 @@ type Idea = {
   description: string;
   status: "Caixa de entrada" | "Explorando" | "Priorizada";
 };
+type MainProject = {
+  name: string;
+  description: string;
+  deadline: string;
+  nextAction: string;
+};
 type ProjectNote = { id: number; text: string; date: string };
 type AppState = {
   completed: Record<string, boolean>;
@@ -176,6 +182,7 @@ type AppState = {
   deletedFinanceGroupIds: string[];
   expenses: Expense[];
   ideas: Idea[];
+  project: MainProject | null;
   projectNotes: ProjectNote[];
   budget: number;
   cardLimit: number;
@@ -248,6 +255,7 @@ const initialState: AppState = {
   deletedFinanceGroupIds: [],
   expenses: [],
   ideas: [],
+  project: null,
   projectNotes: [],
   budget: 0,
   cardLimit: 0,
@@ -426,6 +434,7 @@ export default function Page() {
   const [routineOpen, setRoutineOpen] = useState(false);
   const [ideaOpen, setIdeaOpen] = useState(false);
   const [projectOpen, setProjectOpen] = useState(false);
+  const [projectDetailsOpen, setProjectDetailsOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [editingNote, setEditingNote] = useState<ProjectNote | null>(null);
@@ -814,6 +823,7 @@ export default function Page() {
               state={state}
               selectedMonth={selectedMonth}
               onMonthChange={setSelectedMonth}
+              onConfigure={() => setProjectDetailsOpen(true)}
               onAdd={() => {
                 setEditingNote(null);
                 setProjectOpen(true);
@@ -1009,6 +1019,12 @@ export default function Page() {
                 ],
           }))
         }
+      />
+      <ProjectDetailsDialog
+        open={projectDetailsOpen}
+        onOpenChange={setProjectDetailsOpen}
+        project={state.project}
+        onSubmit={(project) => setState((current) => ({ ...current, project }))}
       />
       <PracticeDialog
         key={
@@ -1298,6 +1314,7 @@ function Dashboard({
     .filter((item) => item.kind === "income")
     .reduce((sum, item) => sum + item.amount, 0);
   const completion = Math.round((done / activities.length) * 100) || 0;
+  const projectProgress = Math.min(state.projectNotes.length * 10, 100);
   return (
     <>
       <PageTitle
@@ -1326,8 +1343,12 @@ function Dashboard({
         />
         <MetricCard
           label="Projeto principal"
-          value="0%"
-          note="Nenhum avanço registrado"
+          value={`${projectProgress}%`}
+          note={
+            state.project
+              ? state.project.name
+              : "Adicione seu projeto principal"
+          }
           icon={FolderKanban}
         />
       </div>
@@ -2175,6 +2196,7 @@ function Project({
   state,
   selectedMonth,
   onMonthChange,
+  onConfigure,
   onAdd,
   onEdit,
   onDelete,
@@ -2182,10 +2204,12 @@ function Project({
   state: AppState;
   selectedMonth: string;
   onMonthChange: (month: string) => void;
+  onConfigure: () => void;
   onAdd: () => void;
   onEdit: (note: ProjectNote) => void;
   onDelete: (id: number) => void;
 }) {
+  const project = state.project;
   const projectProgress = Math.min(state.projectNotes.length * 10, 100);
   const allNotes = [...state.projectNotes].sort((a, b) =>
     b.date.localeCompare(a.date),
@@ -2194,6 +2218,11 @@ function Project({
   const monthlyNotes = allNotes.filter((note) =>
     note.date.startsWith(selectedMonth),
   );
+  const deadlineLabel = project?.deadline
+    ? new Intl.DateTimeFormat("pt-BR").format(
+        new Date(`${project.deadline}T12:00:00`),
+      )
+    : "Não definido";
   return (
     <>
       <PageTitle
@@ -2203,151 +2232,175 @@ function Project({
         action={
           <PageActions>
             <MonthNavigator month={selectedMonth} onChange={onMonthChange} />
-            <Button onClick={onAdd}>
-              <Plus />
-              Registrar avanço
-            </Button>
+            {project ? (
+              <>
+                <Button variant="outline" onClick={onConfigure}>
+                  <Pencil />
+                  Editar projeto
+                </Button>
+                <Button onClick={onAdd}>
+                  <Plus />
+                  Registrar avanço
+                </Button>
+              </>
+            ) : (
+              <Button onClick={onConfigure}>
+                <Plus />
+                Adicionar projeto
+              </Button>
+            )}
           </PageActions>
         }
       />
-      <div className="grid gap-4 xl:grid-cols-[1.2fr_.8fr]">
+      {!project ? (
         <Card>
-          <CardHeader>
-            <CardTitle>Seu projeto principal</CardTitle>
-            <CardDescription>
-              O progresso geral é construído a partir de todos os seus
-              registros.
-            </CardDescription>
-            <CardAction>
-              <Badge variant={latest ? "default" : "outline"}>
-                {latest ? "Em andamento" : "Ainda não iniciado"}
-              </Badge>
-            </CardAction>
-          </CardHeader>
-          <CardContent>
-            <div className="mb-2 flex justify-between text-sm">
-              <span>Progresso registrado</span>
-              <span className="font-mono">{projectProgress}%</span>
-            </div>
-            <Progress value={projectProgress} />
-            <div className="mt-6 grid gap-3 sm:grid-cols-3">
-              <Insight
-                title="Prazo"
-                value="Não definido"
-                note="Configure quando estiver pronto"
-              />
-              <Insight
-                title="Avanços no mês"
-                value={String(monthlyNotes.length)}
-                note={`em ${monthLabel(selectedMonth).toLocaleLowerCase("pt-BR")}`}
-              />
-              <Insight
-                title="Próxima ação"
-                value={latest ? "Continuar" : "Começar"}
-                note={
-                  latest
-                    ? "Registre o próximo avanço"
-                    : "Registre o primeiro avanço"
-                }
-              />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Próximo passo</CardTitle>
-            <CardDescription>
-              {latest
-                ? "Continue a partir do último avanço geral."
-                : "A menor ação que move o projeto."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {latest ? (
-              <div className="space-y-4 rounded-lg border bg-muted/20 p-4">
-                <div>
-                  <Badge variant="outline">Último avanço</Badge>
-                  <p className="mt-3 text-sm leading-6">{latest.text}</p>
-                  <p className="mt-2 font-mono text-xs text-muted-foreground">
-                    {new Date(`${latest.date}T12:00:00`).toLocaleDateString(
-                      "pt-BR",
-                    )}
-                  </p>
-                </div>
-                <Button className="w-full" onClick={onAdd}>
-                  <Plus />
-                  Registrar próximo avanço
-                </Button>
-              </div>
-            ) : (
-              <EmptyState
-                icon={Target}
-                title="Nada definido ainda"
-                description="Registre o primeiro avanço para iniciar."
-                action="Começar agora"
-                onAction={onAdd}
-              />
-            )}
-          </CardContent>
-        </Card>
-      </div>
-      <Card className="mt-4">
-        <CardHeader>
-          <CardTitle>Avanços do mês</CardTitle>
-          <CardDescription>
-            Edite ou exclua qualquer registro da competência selecionada.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {monthlyNotes.length === 0 ? (
+          <CardContent className="pt-6">
             <EmptyState
               icon={FolderKanban}
-              title="Nenhum avanço neste mês"
-              description="Use a navegação para consultar outro período ou registre o próximo avanço."
-              action={
-                selectedMonth === currentMonthKey()
-                  ? "Registrar avanço"
-                  : undefined
-              }
-              onAction={selectedMonth === currentMonthKey() ? onAdd : undefined}
+              title="Nenhum projeto principal cadastrado"
+              description="Adicione o projeto que você quer executar, defina o objetivo, o prazo e a próxima ação."
+              action="Adicionar projeto"
+              onAction={onConfigure}
             />
-          ) : (
-            monthlyNotes.map((note) => (
-              <div
-                key={note.id}
-                className="flex items-start gap-3 rounded-lg border p-4"
-              >
-                <div className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
-                  <Check className="size-3.5" />
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <div className="grid gap-4 xl:grid-cols-[1.2fr_.8fr]">
+            <Card>
+              <CardHeader>
+                <CardTitle>{project.name}</CardTitle>
+                <CardDescription>{project.description}</CardDescription>
+                <CardAction>
+                  <Badge variant={latest ? "default" : "outline"}>
+                    {latest ? "Em andamento" : "Ainda não iniciado"}
+                  </Badge>
+                </CardAction>
+              </CardHeader>
+              <CardContent>
+                <div className="mb-2 flex justify-between text-sm">
+                  <span>Progresso registrado</span>
+                  <span className="font-mono">{projectProgress}%</span>
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm leading-6">{note.text}</p>
-                  <p className="mt-1 font-mono text-xs text-muted-foreground">
-                    {new Date(`${note.date}T12:00:00`).toLocaleDateString(
-                      "pt-BR",
-                    )}
-                  </p>
-                </div>
-                <div className="flex gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => onEdit(note)}
-                    aria-label="Editar avanço"
-                  >
-                    <Pencil />
-                  </Button>
-                  <DeleteAction
-                    label="Excluir avanço"
-                    description="Este avanço será removido permanentemente da linha do tempo."
-                    onConfirm={() => onDelete(note.id)}
+                <Progress value={projectProgress} />
+                <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                  <Insight
+                    title="Prazo"
+                    value={deadlineLabel}
+                    note="Data prevista para conclusão"
+                  />
+                  <Insight
+                    title="Avanços no mês"
+                    value={String(monthlyNotes.length)}
+                    note={`em ${monthLabel(selectedMonth).toLocaleLowerCase("pt-BR")}`}
+                  />
+                  <Insight
+                    title="Próxima ação"
+                    value={project.nextAction}
+                    note="Próximo movimento definido"
                   />
                 </div>
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Próximo passo</CardTitle>
+                <CardDescription>
+                  {latest
+                    ? "Continue a partir do último avanço geral."
+                    : "A menor ação que move o projeto."}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {latest ? (
+                  <div className="space-y-4 rounded-lg border bg-muted/20 p-4">
+                    <div>
+                      <Badge variant="outline">Último avanço</Badge>
+                      <p className="mt-3 text-sm leading-6">{latest.text}</p>
+                      <p className="mt-2 font-mono text-xs text-muted-foreground">
+                        {new Date(`${latest.date}T12:00:00`).toLocaleDateString(
+                          "pt-BR",
+                        )}
+                      </p>
+                    </div>
+                    <Button className="w-full" onClick={onAdd}>
+                      <Plus />
+                      Registrar próximo avanço
+                    </Button>
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon={Target}
+                    title="Nada definido ainda"
+                    description="Registre o primeiro avanço para iniciar."
+                    action="Começar agora"
+                    onAction={onAdd}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </div>
+          <Card className="mt-4">
+            <CardHeader>
+              <CardTitle>Avanços do mês</CardTitle>
+              <CardDescription>
+                Edite ou exclua qualquer registro da competência selecionada.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {monthlyNotes.length === 0 ? (
+                <EmptyState
+                  icon={FolderKanban}
+                  title="Nenhum avanço neste mês"
+                  description="Use a navegação para consultar outro período ou registre o próximo avanço."
+                  action={
+                    selectedMonth === currentMonthKey()
+                      ? "Registrar avanço"
+                      : undefined
+                  }
+                  onAction={
+                    selectedMonth === currentMonthKey() ? onAdd : undefined
+                  }
+                />
+              ) : (
+                monthlyNotes.map((note) => (
+                  <div
+                    key={note.id}
+                    className="flex items-start gap-3 rounded-lg border p-4"
+                  >
+                    <div className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
+                      <Check className="size-3.5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm leading-6">{note.text}</p>
+                      <p className="mt-1 font-mono text-xs text-muted-foreground">
+                        {new Date(`${note.date}T12:00:00`).toLocaleDateString(
+                          "pt-BR",
+                        )}
+                      </p>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onEdit(note)}
+                        aria-label="Editar avanço"
+                      >
+                        <Pencil />
+                      </Button>
+                      <DeleteAction
+                        label="Excluir avanço"
+                        description="Este avanço será removido permanentemente da linha do tempo."
+                        onConfirm={() => onDelete(note.id)}
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
     </>
   );
 }
@@ -3752,6 +3805,101 @@ function IdeaDetailDialog({
               </Button>
               <Button type="submit">Salvar alterações</Button>
             </div>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ProjectDetailsDialog({
+  open,
+  onOpenChange,
+  project,
+  onSubmit,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  project: MainProject | null;
+  onSubmit: (project: MainProject) => void;
+}) {
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    onSubmit({
+      name: String(data.get("name")).trim(),
+      description: String(data.get("description")).trim(),
+      deadline: String(data.get("deadline")),
+      nextAction: String(data.get("nextAction")).trim(),
+    });
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <form onSubmit={submit}>
+          <DialogHeader>
+            <DialogTitle>
+              {project
+                ? "Editar projeto principal"
+                : "Adicionar projeto principal"}
+            </DialogTitle>
+            <DialogDescription>
+              Defina o resultado esperado, o prazo e o próximo movimento.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-5">
+            <Field label="Nome do projeto">
+              <Input
+                name="name"
+                defaultValue={project?.name}
+                placeholder="Ex.: Lançar meu novo produto"
+                maxLength={120}
+                required
+              />
+            </Field>
+            <Field label="Objetivo">
+              <Textarea
+                name="description"
+                defaultValue={project?.description}
+                placeholder="Descreva o resultado que indicará que o projeto foi concluído."
+                rows={4}
+                maxLength={1000}
+                required
+              />
+            </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Prazo">
+                <Input
+                  name="deadline"
+                  type="date"
+                  defaultValue={project?.deadline}
+                  required
+                />
+              </Field>
+              <Field label="Próxima ação">
+                <Input
+                  name="nextAction"
+                  defaultValue={project?.nextAction}
+                  placeholder="Ex.: Definir o escopo"
+                  maxLength={160}
+                  required
+                />
+              </Field>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
+              Cancelar
+            </Button>
+            <Button type="submit">
+              {project ? "Salvar alterações" : "Adicionar projeto"}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
